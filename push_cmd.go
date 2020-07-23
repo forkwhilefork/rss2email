@@ -135,10 +135,10 @@ type pushCmd struct {
 	// Should we send emails?
 	send bool
 
-	// Should we send emails?
+	// Pushover API key
 	apiKey string
 
-	// Should we send emails?
+	// Pushover user/group key
 	userKey string
 }
 
