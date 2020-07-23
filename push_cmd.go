@@ -85,7 +85,7 @@ func (p *pushCmd) ProcessURL(input string) error {
 			// Mark the item as having been seen.
 			RecordSeen(i)
 
-			// If we're supposed to send email then do that
+			// If we're supposed to send a push notification then do that
 			if p.send {
 
 				// The body should be stored in the
@@ -132,7 +132,7 @@ type pushCmd struct {
 	// notices
 	emails []string
 
-	// Should we send emails?
+	// Should we push notifications?
 	send bool
 
 	// Pushover API key
