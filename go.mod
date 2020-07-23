@@ -5,6 +5,7 @@ go 1.12
 require (
 	github.com/PuerkitoBio/goquery v1.5.0 // indirect
 	github.com/google/subcommands v1.0.1
+	github.com/gregdel/pushover v0.0.0-20200416074932-c8ad547caed4
 	github.com/k3a/html2text v0.0.0-20180923223239-2cdb1fac5429
 	github.com/mmcdole/gofeed v1.0.0-beta2
 	github.com/mmcdole/goxpp v0.0.0-20181012175147-0068e33feabf // indirect
