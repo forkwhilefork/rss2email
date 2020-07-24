@@ -18,8 +18,8 @@ import (
 
 	"github.com/google/subcommands"
     "github.com/gregdel/pushover"
-	"github.com/k3a/html2text"
 	"github.com/mmcdole/gofeed"
+	"jaytaylor.com/html2text"
 )
 
 // FetchFeed fetches a feed from the remote URL.
@@ -103,7 +103,10 @@ func (p *sendCmd) ProcessURL(input string) error {
 				}
 
 				// Convert the content to text.
-				text := html2text.HTML2Text(content)
+				text, err := html2text.FromString(content)
+				if err != nil {
+					panic(err)
+				}
 
 				// If we're supposed to send push notifications with pushover
 				if p.usePushover {
