@@ -1,5 +1,5 @@
 //
-// This is the push-subcommand.
+// This is the send-subcommand.
 //
 
 package main
