@@ -23,7 +23,7 @@ func main() {
 	subcommands.Register(&addCmd{}, "")
 	subcommands.Register(&delCmd{}, "")
 	subcommands.Register(&cronCmd{}, "")
-	subcommands.Register(&pushCmd{}, "")
+	subcommands.Register(&sendCmd{}, "")
 	subcommands.Register(&versionCmd{}, "")
 
 	flag.Parse()
