@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"os"
     "strconv"
 	"strings"
+	"text/template"
 
 	"github.com/google/subcommands"
     "github.com/gregdel/pushover"
@@ -128,6 +130,37 @@ func (p *sendCmd) ProcessURL(input string) error {
 				}
 
 				if p.useSendy {
+					if len(p.emailTemplate) != 0 {
+						emailTemplate, err := ioutil.ReadFile(p.emailTemplate)
+						if err != nil {
+							return err
+						}
+
+						type TemplateParms struct {
+							Title    string
+							Body      string
+						}
+				
+						//
+						// Populate it appropriately.
+						//
+						var x TemplateParms
+						x.Title = i.Title
+						x.Body = content
+				
+						//
+						// Render our template into a buffer.
+						//
+						src := string(emailTemplate)
+						t := template.Must(template.New("tmpl").Parse(src))
+						buf := &bytes.Buffer{}
+						err = t.Execute(buf, x)
+						if err != nil {
+							return err
+						}
+						content = buf.String()
+					}
+
 					apiUrl := "https://" + p.sendyApiHostname
 					resource := "/api/campaigns/create.php"
 					data := url.Values{}
@@ -186,6 +219,9 @@ type sendCmd struct {
 	// Pushover user/group key
 	pushoverUserKey string
 
+	// email template file
+	emailTemplate string
+
 	// Should we send emails with Sendy?
 	useSendy bool
 
@@ -225,6 +261,7 @@ func (p *sendCmd) SetFlags(f *flag.FlagSet) {
 	f.BoolVar(&p.usePushover, "usePushover", false, "Should we send push messages?")
 	f.StringVar(&p.pushoverApiKey, "pushoverApiKey", "", "Pushover API key")
 	f.StringVar(&p.pushoverUserKey, "pushoverUserKey", "", "Pushover user (or group) key")
+	f.StringVar(&p.emailTemplate, "emailTemplate", "", "Path to email template file")
 	f.BoolVar(&p.useSendy, "useSendy", false, "Should we send emails with Sendy?")
 	f.StringVar(&p.sendyApiHostname, "sendyApiHostname", "", "Sendy API Hostname (e.g. sendy.example.com)")
 	f.StringVar(&p.sendyApiKey, "sendyApiKey", "", "Sendy API key")
@@ -239,8 +276,8 @@ func (p *sendCmd) SetFlags(f *flag.FlagSet) {
 func (p *sendCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) subcommands.ExitStatus {
 
 	cmdUsage := "Usage: rss2email send [-send=<true>] [-usePushover=<false> -pushoverApiKey=<key> -pushoverUserKey=<key>]\n" +
-				"       [-useSendy=<false> -sendyApiHostname=<sendy.example.com> -sendyApiKey=<key> -sendyListId=<key>" +
-				"        -sendyFromName=<name> -sendyFromEmail=<email> ]"
+				"       [-emailTemplate=</path/to/file>] [-useSendy=<false> -sendyApiHostname=<sendy.example.com>\n" + 
+				"        -sendyApiKey=<key> -sendyListId=<key> -sendyFromName=<name> -sendyFromEmail=<email>]"
 	
 	if (p.usePushover || p.useSendy) {
 		//
@@ -264,6 +301,14 @@ func (p *sendCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 		fmt.Printf("you must use either sendy or pushover\n" + cmdUsage + "\n")
 		return subcommands.ExitFailure
 
+	}
+
+	if p.useSendy && len(p.emailTemplate) != 0 {
+		if _, err := os.Stat(p.emailTemplate); err != nil {
+			// p.emailTemplate doesn't exist or can't access
+			fmt.Printf("can't stat " + p.emailTemplate + "\n")
+			return subcommands.ExitFailure
+		}
 	}
 
 	//
