@@ -304,7 +304,11 @@ func (p *sendCmd) Execute(_ context.Context, f *flag.FlagSet, _ ...interface{}) 
 	}
 
 	if p.useSendy && len(p.emailTemplate) != 0 {
-		//TODO: check that emailTemplate exists and can be accessed
+		if _, err := os.Stat(p.emailTemplate); err != nil {
+			// p.emailTemplate doesn't exist or can't access
+			fmt.Printf("can't stat " + p.emailTemplate + "\n")
+			return subcommands.ExitFailure
+		}
 	}
 
 	//
