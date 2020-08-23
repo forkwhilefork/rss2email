@@ -13,52 +13,82 @@ import (
 	"html"
 	"io/ioutil"
 	"mime/quotedprintable"
+	"os"
 	"os/exec"
+	"os/user"
+	"path"
 	"text/template"
+
+	"github.com/mmcdole/gofeed"
+	"github.com/skx/rss2email/withstate"
 )
 
-// Template is our text/template which is used to send an email to the local
-// user.  We're using a template such that we can send both HTML and Text
-// versions of the RSS feed item.
-var Template = `Content-Type: multipart/mixed; boundary=21ee3da964c7bf70def62adb9ee1a061747003c026e363e47231258c48f1
-From: {{.From}}
-To: {{.To}}
-Subject: [rss2email] {{.Subject}}
-X-RSS-Link: {{.Link}}
-X-RSS-Feed: {{.Feed}}
-Mime-Version: 1.0
+var (
+	// The compiled template we use to generate our email
+	tmpl *template.Template
+)
 
---21ee3da964c7bf70def62adb9ee1a061747003c026e363e47231258c48f1
-Content-Type: multipart/related; boundary=76a1282373c08a65dd49db1dea2c55111fda9a715c89720a844fabb7d497
+// setupTemplate loads the template we use for generating the email
+// notification.
+func setupTemplate() *template.Template {
 
---76a1282373c08a65dd49db1dea2c55111fda9a715c89720a844fabb7d497
-Content-Type: multipart/alternative; boundary=4186c39e13b2140c88094b3933206336f2bb3948db7ecf064c7a7d7473f2
+	// Already setup?  Return the template
+	if tmpl != nil {
+		return tmpl
+	}
 
---4186c39e13b2140c88094b3933206336f2bb3948db7ecf064c7a7d7473f2
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: quoted-printable
+	// Load the default template from the embedded resource.
+	content, err := getResource("data/email.tmpl")
+	if err != nil {
+		fmt.Printf("failed to load embedded resource: %s\n", err.Error())
+		os.Exit(1)
+	}
 
-{{.Link}}
+	//
+	// Is there an on-disk template instead?  If so use it.
+	//
+	home := os.Getenv("HOME")
 
-{{.Text}}
+	// If that fails then get the current user, and use
+	// their home if possible.
+	if home == "" {
+		usr, errr := user.Current()
+		if errr == nil {
+			home = usr.HomeDir
+		}
+	}
 
-{{.Link}}
---4186c39e13b2140c88094b3933206336f2bb3948db7ecf064c7a7d7473f2
-Content-Type: text/html; charset=UTF-8
-Content-Transfer-Encoding: quoted-printable
+	// The path to the overridden template
+	override := path.Join(home, ".rss2email", "email.tmpl")
 
-<p><a href="{{.Link}}">{{.Link}}</a></p>
-{{.HTML}}
-<p><a href="{{.Link}}">{{.Link}}</a></p>
---4186c39e13b2140c88094b3933206336f2bb3948db7ecf064c7a7d7473f2--
+	// If the file exists, use it.
+	_, err = os.Stat(override)
+	if !os.IsNotExist(err) {
+		content, err = ioutil.ReadFile(override)
+		if err != nil {
+			fmt.Printf("failed to read %s: %s\n", override, err.Error())
+			os.Exit(1)
+		}
+	}
 
---76a1282373c08a65dd49db1dea2c55111fda9a715c89720a844fabb7d497--
---21ee3da964c7bf70def62adb9ee1a061747003c026e363e47231258c48f1--
-`
+	//
+	// Function map allows exporting functions to the template
+	//
+	funcMap := template.FuncMap{
+		"quoteprintable": toQuotedPrintable,
+	}
+
+	tmpl = template.Must(template.New("email.tmpl").Funcs(funcMap).Parse(string(content)))
+
+	return tmpl
+}
 
 // toQuotedPrintable will convert the given input-string to a
 // quoted-printable format.  This is required for our MIME-part
 // body.
+//
+// NOTE: We use this function both directly, and from within our
+// template.
 func toQuotedPrintable(s string) (string, error) {
 	var ac bytes.Buffer
 	w := quotedprintable.NewWriter(&ac)
@@ -79,7 +109,7 @@ func toQuotedPrintable(s string) (string, error) {
 //
 // We send a MIME message with both a plain-text and a HTML-version of the
 // message.  This should be nicer for users.
-func SendMail(feedURL string, addresses []string, subject string, link string, textstr string, htmlstr string) error {
+func SendMail(feed *gofeed.Feed, item withstate.FeedItem, addresses []string, textstr string, htmlstr string) error {
 	var err error
 
 	//
@@ -94,29 +124,43 @@ func SendMail(feedURL string, addresses []string, subject string, link string, t
 	//
 	// Process each address
 	//
-
 	for _, addr := range addresses {
+
 		//
 		// Here is a temporary structure we'll use to popular our email
 		// template.
 		//
 		type TemplateParms struct {
-			Feed    string
-			To      string
-			From    string
-			Text    string
-			HTML    string
-			Subject string
-			Link    string
+			Feed      string
+			FeedTitle string
+			To        string
+			From      string
+			Text      string
+			HTML      string
+			Subject   string
+			Link      string
+
+			// In case people need access to fields
+			// we've not wrapped/exported explicitly
+			RSSFeed *gofeed.Feed
+			RSSItem withstate.FeedItem
 		}
 
 		//
 		// Populate it appropriately.
 		//
 		var x TemplateParms
-		x.To = addr
-		x.Feed = feedURL
+		x.Feed = feed.Link
+		x.FeedTitle = feed.Title
 		x.From = addr
+		x.Link = item.Link
+		x.Subject = item.Title
+		x.To = addr
+		x.RSSFeed = feed
+		x.RSSItem = item
+
+		// The real meat of the mail is the text & HTML
+		// parts.  They need to be encoded, unconditionally.
 		x.Text, err = toQuotedPrintable(textstr)
 		if err != nil {
 			return err
@@ -125,14 +169,11 @@ func SendMail(feedURL string, addresses []string, subject string, link string, t
 		if err != nil {
 			return err
 		}
-		x.Subject = subject
-		x.Link = link
 
 		//
 		// Render our template into a buffer.
 		//
-		src := string(Template)
-		t := template.Must(template.New("tmpl").Parse(src))
+		t := setupTemplate()
 		buf := &bytes.Buffer{}
 		err = t.Execute(buf, x)
 		if err != nil {
@@ -143,7 +184,7 @@ func SendMail(feedURL string, addresses []string, subject string, link string, t
 		// Prepare to run sendmail, with a pipe we can write our
 		// message to.
 		//
-		sendmail := exec.Command("/usr/sbin/sendmail", "-f", addr, addr)
+		sendmail := exec.Command("/usr/sbin/sendmail", "-i", "-f", addr, addr)
 		stdin, err := sendmail.StdinPipe()
 		if err != nil {
 			fmt.Printf("Error sending email: %s\n", err.Error())
