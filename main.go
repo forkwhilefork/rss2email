@@ -39,6 +39,7 @@ func main() {
 	subcommands.Register(&exportCmd{})
 	subcommands.Register(&importCmd{})
 	subcommands.Register(&listCmd{})
+	subcommands.Register(&sendCmd{})
 	subcommands.Register(&versionCmd{})
 
 	//
