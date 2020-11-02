@@ -117,11 +117,20 @@ func (p *sendCmd) ProcessURL(input string) error {
 
 					// Create a new recipient
 					recipient := pushover.NewRecipient(p.pushoverUserKey)
-				
+					
+					// check if text is too long and if so truncate
+					if len(text) > 1024 {
+						text = text[0:1021] + "..."
+					}
+					
+					// check if title is too long and if so truncate
+					if len(i.Title) > 250 {
+						i.Title = i.Title[0:247] + "..."
+					}
+
 					// Create the message to send
 					message := pushover.NewMessageWithTitle(text, i.Title)
 
-				
 					// Send the message to the recipient
 					_, err := app.SendMessage(message, recipient)
 					if err != nil {
